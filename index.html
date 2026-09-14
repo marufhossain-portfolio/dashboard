@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ALEL Production Dashboard — Live BI</title>
+  <meta name="description" content="Live Power BI–style production dashboard: OEE, production, productivity and defects — auto-refreshing from the master sheet." />
+  <meta name="theme-color" content="#070b14" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" type="image/png" sizes="48x48" href="icons/favicon-48.png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ALEL Dashboard" />
+  <meta name="application-name" content="ALEL Dashboard" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- ===== Top bar ===== -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">ALEL</div>
+      <div>
+        <h1>Production Dashboard</h1>
+        <small>Operational Excellence · Live BI</small>
+      </div>
+    </div>
+
+    <span class="live-pill" id="livePill"><span class="live-dot"></span><span id="liveText">Connecting…</span></span>
+
+    <button class="tbtn install-btn" id="installBtn" title="Install app">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10l3.5-3.5 1.4 1.4L12 16l-4.9-5.1 1.4-1.4L12 13V3zM5 19h14v2H5z"/></svg>
+      Install App
+    </button>
+
+    <button class="tbtn" id="refreshBtn" title="Refresh now">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
+      Refresh
+    </button>
+
+    <button class="tbtn" id="themeBtn" title="Toggle theme">
+      <svg viewBox="0 0 24 24" fill="currentColor" id="themeIcon"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+  </header>
+
+  <!-- ===== Slicers ===== -->
+  <section class="slicers">
+    <div class="slicer"><label>From date</label><input type="date" id="fFrom" /></div>
+    <div class="slicer"><label>To date</label><input type="date" id="fTo" /></div>
+    <div class="slicer"><label>Product group (PG)</label><select id="fPg"><option value="">All</option></select></div>
+    <div class="slicer"><label>Section</label><select id="fSection"><option value="">All</option></select></div>
+    <div class="slicer"><label>Line</label><select id="fLine"><option value="">All</option></select></div>
+    <div class="slicer"><label>Item</label><select id="fItem"><option value="">All</option></select></div>
+    <div class="chips" id="chips"></div>
+  </section>
+
+  <!-- ===== Grid ===== -->
+  <main class="grid">
+    <div class="kpis" id="kpis"></div>
+
+    <div class="cards">
+      <div class="panel span-2">
+        <div class="panel-head"><h3>Production Trend by Date</h3><span class="hint">sum of production</span></div>
+        <div class="chart-wrap"><canvas id="cProdDate"></canvas></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Achievement % by Product Group</h3><span class="hint">click to filter</span></div>
+        <div class="chart-wrap"><canvas id="cAchPg"></canvas></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Production by Section</h3><span class="hint">share</span></div>
+        <div class="chart-wrap"><canvas id="cSection"></canvas></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Production vs Target by PG</h3><span class="hint">avg productivity</span></div>
+        <div class="chart-wrap"><canvas id="cProdVsTarget"></canvas></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Production by Line</h3><span class="hint">sum</span></div>
+        <div class="chart-wrap"><canvas id="cLine"></canvas></div>
+      </div>
+
+      <div class="panel span-2">
+        <div class="panel-head"><h3>Defects by Problem Type</h3><span class="hint">top 10 · click to filter</span></div>
+        <div class="chart-wrap"><canvas id="cDefectType"></canvas></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Defect Share by PG</h3><span class="hint">share</span></div>
+        <div class="chart-wrap"><canvas id="cDefectPg"></canvas></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Defect Trend by Date</h3><span class="hint">sum of defective qty</span></div>
+        <div class="chart-wrap"><canvas id="cDefectDate"></canvas></div>
+      </div>
+
+      <div class="panel span-2">
+        <div class="panel-head"><h3>Top Items by Production</h3><span class="hint">click a row to filter by item</span></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>#</th><th>Item</th><th>PG</th><th class="num">Production</th><th class="num">Avg Achv %</th><th class="num">Manpower</th><th class="num">Defects</th></tr></thead>
+            <tbody id="tblItems"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div class="footer">
+    Live data from Google Sheets · auto-refreshes · <span id="lastUpdated">—</span>
+  </div>
+
+  <!-- ===== Loader / toast ===== -->
+  <div class="overlay" id="overlay"><div class="loader"><div class="ring"></div><p id="loadMsg">Loading live data…</p></div></div>
+  <div class="toast" id="toast"></div>
+
+  <script src="vendor/chart.umd.min.js"></script>
+  <script src="app.js" defer></script>
+</body>
+</html>
