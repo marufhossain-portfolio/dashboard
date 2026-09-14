@@ -274,36 +274,47 @@
     document.querySelectorAll("#tblItems tr").forEach((tr) => tr.addEventListener("click", () => toggleCross("item", tr.dataset.item)));
   }
 
-  /* ---------------- SMV (min/pc = 60 / productivity) ---------------- */
+  /* ---------------- SMV (min/pc = 60 / productivity — running from production & hours) ---------------- */
+  function smvOf(rows) {
+    let prod = 0, opMin = 0, stdMin = 0;
+    rows.forEach((r) => {
+      const minutes = r.opMin > 0 ? r.opMin : 60; // each entry is a time slot; default 1 hour
+      prod += r.production;
+      opMin += r.manpower * minutes;                 // actual operator-minutes
+      if (r.target > 0) stdMin += (r.production / r.target) * 60; // standard operator-minutes
+    });
+    return { prod, std: prod > 0 ? stdMin / prod : 0, act: prod > 0 ? opMin / prod : 0 };
+  }
   function renderSmv(p) {
     const dim = state.smvDim;
     const key = dim === "item" ? (r) => r.item : dim === "pg" ? (r) => r.pg : (r) => r.section;
     const m = new Map();
-    p.forEach((r) => {
-      const k = key(r) || "(blank)";
-      if (!m.has(k)) m.set(k, { tSum: 0, tN: 0, pSum: 0, pN: 0, prod: 0 });
-      const o = m.get(k);
-      if (r.target > 0) { o.tSum += 60 / r.target; o.tN++; }
-      if (r.productivity > 0) { o.pSum += 60 / r.productivity; o.pN++; }
-      o.prod += r.production;
-    });
-    let rows = [...m.entries()].map(([k, o]) => ({ k, std: o.tN ? o.tSum / o.tN : 0, act: o.pN ? o.pSum / o.pN : 0, prod: o.prod }));
+    p.forEach((r) => { const k = key(r) || "(blank)"; if (!m.has(k)) m.set(k, []); m.get(k).push(r); });
+    let rows = [...m.entries()].map(([k, rs]) => ({ k, ...smvOf(rs) }));
     if (dim === "item") rows.sort((a, b) => b.prod - a.prod); else rows.sort((a, b) => b.std - a.std);
     const top = rows.slice(0, dim === "item" ? 12 : 14);
+
     const data = { labels: top.map((x) => x.k), datasets: [
       { label: "Standard SMV", data: top.map((x) => +x.std.toFixed(3)), backgroundColor: gradFn("#34d399", "#0d9488"), borderRadius: 6, maxBarThickness: 26 },
       { label: "Actual SMV", data: top.map((x) => +x.act.toFixed(3)), backgroundColor: gradFn("#f59e0b", "#ef4444"), borderRadius: 6, maxBarThickness: 26 } ] };
     if (charts.cSmv) { charts.cSmv.data = data; charts.cSmv.update(); } else mk("cSmv", "bar", data, baseOpts());
 
-    const stdAll = avg(p.filter((r) => r.target > 0), (r) => 60 / r.target);
-    const actAll = avg(p.filter((r) => r.productivity > 0), (r) => 60 / r.productivity);
-    const c = state.cross;
-    const sel = c.dim && c.dim !== "date" && c.dim !== "defectType" ? `${c.dim}: ${c.value}` : dim === "item" ? "all products" : dim === "pg" ? "all groups" : "all sections";
-    $("#smvFoot").innerHTML =
-      `<span class="s">Showing<b>${sel}</b></span>` +
-      `<span class="s">Standard SMV<b>${nf(stdAll, 3)} min/pc</b></span>` +
-      `<span class="s">Actual SMV<b>${nf(actAll, 3)} min/pc</b></span>` +
-      `<span class="s">Categories<b>${nf(rows.length)}</b></span>`;
+    const all = smvOf(p), c = state.cross;
+    let sel;
+    if (c.dim && c.dim !== "date" && c.dim !== "defectType") sel = `${c.dim === "item" ? "Product" : c.dim === "pg" ? "Group" : c.dim === "section" ? "Section" : c.dim}: ${c.value}`;
+    else if (state.filters.item) sel = `Product: ${state.filters.item}`;
+    else if (state.filters.pg) sel = `Group: ${state.filters.pg}`;
+    else if (state.filters.section) sel = `Section: ${state.filters.section}`;
+    else sel = dim === "item" ? "All products" : dim === "pg" ? "All groups" : "All sections";
+
+    $("#smvRun").innerHTML =
+      `<span class="s sel">Running SMV for<b>${sel}</b></span>` +
+      `<span class="s std">Standard SMV<b>${nf(all.std, 3)}</b></span>` +
+      `<span class="s act">Actual SMV<b>${nf(all.act, 3)}</b></span>` +
+      `<span class="s">Production<b>${nf(all.prod)}</b></span>`;
+    $("#smvFoot").innerHTML = rows.length
+      ? `<span class="s">Categories<b>${nf(rows.length)}</b></span><span class="s">Formula<b>SMV = 60 ÷ Productivity</b></span>`
+      : `<span class="s" style="color:#ef4444">No data for this selection — clear a filter or pick another.</span>`;
   }
 
   function render() {
@@ -314,7 +325,8 @@
   /* ---------------- Slicers ---------------- */
   function fillSelect(sel, values) { const el = $(sel); const cur = el.value; el.innerHTML = `<option value="">All</option>` + values.map((v) => `<option value="${String(v).replace(/"/g, "&quot;")}">${v}</option>`).join(""); if (values.includes(cur)) el.value = cur; }
   function initSlicers() {
-    const uniq = (f) => [...new Set(state.prod.map(f).filter(Boolean))].sort();
+    const JUNK = /^(#n\/a|#ref!|#div\/0!|#value!|#name\?|#null!|n\/a|-|--)$/i;
+    const uniq = (f) => [...new Set(state.prod.map(f).map((v) => String(v == null ? "" : v).trim()).filter((v) => v && !JUNK.test(v)))].sort();
     fillSelect("#fPg", uniq((r) => r.pg)); fillSelect("#fSection", uniq((r) => r.section)); fillSelect("#fLine", uniq((r) => r.line)); fillSelect("#fItem", uniq((r) => r.item));
     const dates = state.prod.map((r) => dstr(r.date)).filter(Boolean).sort();
     if (dates.length) { const from = $("#fFrom"), to = $("#fTo"); from.min = to.min = dates[0]; from.max = to.max = dates[dates.length - 1]; from.value = dates[0]; to.value = dates[dates.length - 1]; state.filters.from = dates[0]; state.filters.to = dates[dates.length - 1]; }
