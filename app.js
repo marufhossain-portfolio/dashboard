@@ -49,7 +49,7 @@
     return rows.slice(1).filter((r) => r.some((c) => c !== "")).map((r) => { const o = {}; header.forEach((h, i) => { if (h) o[h] = r[i]; }); return o; });
   }
 
-  const state = { prod: [], def: [], sig: "", loading: false, firstLoad: true,
+  const state = { prod: [], def: [], sig: "", loading: false, firstLoad: true, smvDim: "pg",
     filters: { from: "", to: "", pg: "", section: "", line: "", item: "" },
     cross: { dim: "", value: "" } };
 
@@ -274,9 +274,41 @@
     document.querySelectorAll("#tblItems tr").forEach((tr) => tr.addEventListener("click", () => toggleCross("item", tr.dataset.item)));
   }
 
+  /* ---------------- SMV (min/pc = 60 / productivity) ---------------- */
+  function renderSmv(p) {
+    const dim = state.smvDim;
+    const key = dim === "item" ? (r) => r.item : dim === "pg" ? (r) => r.pg : (r) => r.section;
+    const m = new Map();
+    p.forEach((r) => {
+      const k = key(r) || "(blank)";
+      if (!m.has(k)) m.set(k, { tSum: 0, tN: 0, pSum: 0, pN: 0, prod: 0 });
+      const o = m.get(k);
+      if (r.target > 0) { o.tSum += 60 / r.target; o.tN++; }
+      if (r.productivity > 0) { o.pSum += 60 / r.productivity; o.pN++; }
+      o.prod += r.production;
+    });
+    let rows = [...m.entries()].map(([k, o]) => ({ k, std: o.tN ? o.tSum / o.tN : 0, act: o.pN ? o.pSum / o.pN : 0, prod: o.prod }));
+    if (dim === "item") rows.sort((a, b) => b.prod - a.prod); else rows.sort((a, b) => b.std - a.std);
+    const top = rows.slice(0, dim === "item" ? 12 : 14);
+    const data = { labels: top.map((x) => x.k), datasets: [
+      { label: "Standard SMV", data: top.map((x) => +x.std.toFixed(3)), backgroundColor: gradFn("#34d399", "#0d9488"), borderRadius: 6, maxBarThickness: 26 },
+      { label: "Actual SMV", data: top.map((x) => +x.act.toFixed(3)), backgroundColor: gradFn("#f59e0b", "#ef4444"), borderRadius: 6, maxBarThickness: 26 } ] };
+    if (charts.cSmv) { charts.cSmv.data = data; charts.cSmv.update(); } else mk("cSmv", "bar", data, baseOpts());
+
+    const stdAll = avg(p.filter((r) => r.target > 0), (r) => 60 / r.target);
+    const actAll = avg(p.filter((r) => r.productivity > 0), (r) => 60 / r.productivity);
+    const c = state.cross;
+    const sel = c.dim && c.dim !== "date" && c.dim !== "defectType" ? `${c.dim}: ${c.value}` : dim === "item" ? "all products" : dim === "pg" ? "all groups" : "all sections";
+    $("#smvFoot").innerHTML =
+      `<span class="s">Showing<b>${sel}</b></span>` +
+      `<span class="s">Standard SMV<b>${nf(stdAll, 3)} min/pc</b></span>` +
+      `<span class="s">Actual SMV<b>${nf(actAll, 3)} min/pc</b></span>` +
+      `<span class="s">Categories<b>${nf(rows.length)}</b></span>`;
+  }
+
   function render() {
     const p = filteredProd(), d = filteredDef();
-    renderKpis(p, d); renderCharts(p, d); renderTable(p, d); renderChips();
+    renderKpis(p, d); renderCharts(p, d); renderSmv(p); renderTable(p, d); renderChips();
   }
 
   /* ---------------- Slicers ---------------- */
@@ -289,6 +321,10 @@
     ["#fFrom", "#fTo", "#fPg", "#fSection", "#fLine", "#fItem"].forEach((id) => $(id).addEventListener("change", () => {
       state.filters.from = $("#fFrom").value; state.filters.to = $("#fTo").value; state.filters.pg = $("#fPg").value;
       state.filters.section = $("#fSection").value; state.filters.line = $("#fLine").value; state.filters.item = $("#fItem").value; render();
+    }));
+    document.querySelectorAll("#smvSeg button").forEach((b) => b.addEventListener("click", () => {
+      document.querySelectorAll("#smvSeg button").forEach((x) => x.classList.remove("on"));
+      b.classList.add("on"); state.smvDim = b.dataset.dim; render();
     }));
   }
   function renderChips() {

@@ -84,6 +84,19 @@
       </div>
 
       <div class="panel">
+        <div class="panel-head">
+          <h3>SMV Analysis <span class="unit">min / pc</span></h3>
+          <div class="seg" id="smvSeg">
+            <button data-dim="item" class="on">Product</button>
+            <button data-dim="pg">Group</button>
+            <button data-dim="section">Section</button>
+          </div>
+        </div>
+        <div class="chart-wrap"><canvas id="cSmv"></canvas></div>
+        <div class="smv-foot" id="smvFoot"></div>
+      </div>
+
+      <div class="panel">
         <div class="panel-head"><h3>Production by Line</h3><span class="hint">sum</span></div>
         <div class="chart-wrap"><canvas id="cLine"></canvas></div>
       </div>
