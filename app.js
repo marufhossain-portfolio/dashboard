@@ -49,9 +49,19 @@
     return rows.slice(1).filter((r) => r.some((c) => c !== "")).map((r) => { const o = {}; header.forEach((h, i) => { if (h) o[h] = r[i]; }); return o; });
   }
 
-  const state = { prod: [], def: [], sig: "", loading: false, firstLoad: true, smvDim: "pg",
+  const state = { prod: [], def: [], obSmv: {}, sig: "", loading: false, firstLoad: true, smvDim: "pg",
     filters: { from: "", to: "", pg: "", section: "", line: "", item: "" },
     cross: { dim: "", value: "" } };
+
+  async function loadObSmv() {
+    try {
+      const r = await fetch("ob-smv.json?" + Date.now());
+      const arr = await r.json();
+      const map = {};
+      arr.forEach((o) => { map[o.n] = o.v; });
+      state.obSmv = map;
+    } catch (e) { /* OB not available — fall back to Target Productivity */ }
+  }
 
   async function loadData() {
     if (state.loading) return;
@@ -274,14 +284,16 @@
     document.querySelectorAll("#tblItems tr").forEach((tr) => tr.addEventListener("click", () => toggleCross("item", tr.dataset.item)));
   }
 
-  /* ---------------- SMV (min/pc = 60 / productivity — running from production & hours) ---------------- */
+  /* ---------------- SMV (Standard from Operation Bulletin, Actual from Production sheet) ---------------- */
   function smvOf(rows) {
     let prod = 0, opMin = 0, stdMin = 0;
     rows.forEach((r) => {
-      const minutes = r.opMin > 0 ? r.opMin : 60; // each entry is a time slot; default 1 hour
+      const minutes = r.opMin > 0 ? r.opMin : 60;
       prod += r.production;
-      opMin += r.manpower * minutes;                 // actual operator-minutes
-      if (r.target > 0) stdMin += (r.production / r.target) * 60; // standard operator-minutes
+      opMin += r.manpower * minutes;                                              // actual operator-minutes
+      const ob = state.obSmv[r.item] ?? state.obSmv[r.item.toLowerCase()];       // Standard SMV from OB (case-insensitive)
+      const stdSmv = ob != null ? ob : (r.target > 0 ? 60 / r.target : null);
+      if (stdSmv != null) stdMin += r.production * stdSmv;                        // standard operator-minutes
     });
     return { prod, std: prod > 0 ? stdMin / prod : 0, act: prod > 0 ? opMin / prod : 0 };
   }
@@ -313,7 +325,7 @@
       `<span class="s act">Actual SMV<b>${nf(all.act, 3)}</b></span>` +
       `<span class="s">Production<b>${nf(all.prod)}</b></span>`;
     $("#smvFoot").innerHTML = rows.length
-      ? `<span class="s">Categories<b>${nf(rows.length)}</b></span><span class="s">Formula<b>SMV = 60 ÷ Productivity</b></span>`
+      ? `<span class="s">Categories<b>${nf(rows.length)}</b></span><span class="s">Standard<b>Operation Bulletin</b></span><span class="s">Actual<b>Production ÷ Operator-minutes</b></span>`
       : `<span class="s" style="color:#ef4444">No data for this selection — clear a filter or pick another.</span>`;
   }
 
@@ -370,7 +382,7 @@
   if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !navigator.standalone) installBtn.classList.add("show");
 
   /* ---------------- Boot ---------------- */
-  loadData();
+  loadObSmv().then(() => loadData());
   setInterval(() => { if (!document.hidden) loadData(); }, REFRESH_MS);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) loadData(); });
 })();
