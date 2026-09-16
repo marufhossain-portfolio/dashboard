@@ -49,7 +49,7 @@
     return rows.slice(1).filter((r) => r.some((c) => c !== "")).map((r) => { const o = {}; header.forEach((h, i) => { if (h) o[h] = r[i]; }); return o; });
   }
 
-  const state = { prod: [], def: [], obSmv: {}, sig: "", loading: false, firstLoad: true, smvDim: "pg",
+  const state = { prod: [], def: [], obSmv: {}, sig: "", loading: false, firstLoad: true, smvDim: "pg", tab: "dash",
     filters: { from: "", to: "", pg: "", section: "", line: "", item: "" },
     cross: { dim: "", value: "" } };
 
@@ -201,6 +201,9 @@
     g.addColorStop(0, c1); g.addColorStop(1, c2); return g;
   }
   const gradFn = (c1, c2, horiz) => (ctx) => grad(ctx, c1, c2, horiz);
+  // Chart.js renders canvas gradients as black on horizontal (indexAxis:"y") bars — use solid interpolated colours there
+  function hex2rgb(h) { h = String(h).replace("#", ""); if (h.length === 3) h = h.split("").map((x) => x + x).join(""); return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]; }
+  function lerpColor(c1, c2, t) { const a = hex2rgb(c1), b = hex2rgb(c2); t = Math.max(0, Math.min(1, t || 0)); return `rgb(${Math.round(a[0] + (b[0] - a[0]) * t)},${Math.round(a[1] + (b[1] - a[1]) * t)},${Math.round(a[2] + (b[2] - a[2]) * t)})`; }
   function baseOpts() {
     const t = tc();
     return {
@@ -258,7 +261,8 @@
     const dTypeRows = filteredDef("defectType");
     const dt = sortByV(groupSum(dTypeRows, (r) => r.problem, (r) => r.qty)).slice(0, 10);
     const sel = state.cross.dim === "defectType" ? state.cross.value : "";
-    const dtColors = dt.map((x, i) => (sel ? (x.k === sel ? gradFn("#ef4444", "#b91c1c", true) : "rgba(239,68,68,.28)") : gradFn("#f97316", "#ef4444", true)));
+    const dmax = Math.max(1, ...dt.map((x) => x.v));
+    const dtColors = dt.map((x) => (sel ? (x.k === sel ? "#ef4444" : "rgba(239,68,68,.28)") : lerpColor("#f97316", "#ef4444", x.v / dmax)));
     const dtd = { labels: dt.map((x) => x.k), datasets: [{ label: "Defective Qty", data: dt.map((x) => x.v), backgroundColor: dtColors, borderRadius: 6, maxBarThickness: 26 }] };
     const dto = baseOpts(); dto.indexAxis = "y";
     if (charts.cDefectType) { charts.cDefectType.data = dtd; charts.cDefectType.update(); } else mk("cDefectType", "bar", dtd, dto, clickBar("defectType"));
@@ -329,9 +333,178 @@
       : `<span class="s" style="color:#ef4444">No data for this selection — clear a filter or pick another.</span>`;
   }
 
+  /* ================= OPEX Analysis ================= */
+  const OBSTD = (r) => { const ob = state.obSmv[r.item] ?? state.obSmv[r.item.toLowerCase()]; return ob != null ? ob : (r.target > 0 ? 60 / r.target : null); };
+  const rMin = (r) => r.manpower * (r.opMin > 0 ? r.opMin : 60);
+
+  function lineOpex(rows) {
+    const m = new Map();
+    rows.forEach((r) => {
+      const k = r.line || "(blank)";
+      if (!m.has(k)) m.set(k, { k, prod: 0, opMin: 0, stdMin: 0, mp: 0, n: 0, ach: 0 });
+      const o = m.get(k), std = OBSTD(r);
+      o.prod += r.production; o.opMin += rMin(r); o.mp += r.manpower; o.n++; o.ach += r.achievement;
+      if (std != null) o.stdMin += r.production * std;
+    });
+    return [...m.values()].map((o) => {
+      const std = o.prod > 0 ? o.stdMin / o.prod : 0;
+      const act = o.prod > 0 ? o.opMin / o.prod : 0;
+      const achievable = std > 0 ? o.opMin / std : o.prod;
+      return { ...o, std, act, gap: act - std, eff: act > 0 ? (std / act) * 100 : 0,
+        achievable, lost: Math.max(0, achievable - o.prod), lostMin: Math.max(0, o.opMin - o.stdMin),
+        ach: o.n ? o.ach / o.n : 0, mpp: o.opMin > 0 ? o.prod / (o.opMin / 60) : 0 };
+    });
+  }
+  function lineDefects(d) { const m = new Map(); d.forEach((r) => { const k = r.line || "(blank)"; m.set(k, (m.get(k) || 0) + r.qty); }); return m; }
+
+  function opexTotals(p, d) {
+    const all = smvOf(p), opMin = sum(p, rMin), def = sum(d, (r) => r.qty);
+    const achievable = all.std > 0 ? opMin / all.std : all.prod;
+    return { std: all.std, act: all.act, prod: all.prod, opMin, def, achievable,
+      gap: all.act - all.std, eff: all.act > 0 ? (all.std / all.act) * 100 : 0,
+      lost: Math.max(0, achievable - all.prod),
+      ppm: all.prod > 0 ? (def / all.prod) * 1e6 : 0,
+      wastePct: all.prod > 0 ? (def / all.prod) * 100 : 0,
+      mpp: opMin > 0 ? all.prod / (opMin / 60) : 0,
+      recoverMin: Math.max(0, opMin - all.std * all.prod) };
+  }
+
+  function renderOpexGoals(p, d) {
+    const t = opexTotals(p, d);
+    const cards = [
+      ["SMV Gap", (t.gap >= 0 ? "+" : "") + nf(t.gap, 3), "min / pc over standard", "hours", "#f59e0b", "#ef4444", t.act > 0 ? Math.min(100, (t.gap / t.act) * 100) : 0],
+      ["Line Efficiency", nf(t.eff, 1) + "%", "standard ÷ actual pace", "ach", "#34d399", "#0d9488", Math.min(100, t.eff)],
+      ["Lost Capacity", nf(t.lost), "pcs recoverable at standard", "prodv", "#38bdf8", "#6366f1", 0],
+      ["Wastage", nf(t.wastePct, 2) + "%", nf(t.ppm) + " PPM defective", "def", "#ef4444", "#f97316", Math.min(100, t.wastePct * 10)],
+      ["Manpower Productivity", nf(t.mpp, 2), "pcs / operator-hour", "mp", "#a855f7", "#6366f1", 0],
+      ["Recoverable Minutes", nf(t.recoverMin), "operator-min · this period", "rate", "#14b8a6", "#0d9488", 0],
+    ];
+    $("#opexGoals").innerHTML = cards.map(([lab, val, sub, ic, c1, c2, bar]) =>
+      `<div class="opex-goal" style="--g1:${c1};--g2:${c2}">
+         <div class="g-top"><span class="g-ic"><svg viewBox="0 0 24 24" fill="currentColor">${ICON[ic] || ICON.prod}</svg></span><span class="g-lab">${lab}</span></div>
+         <div class="g-val">${val}</div><div class="g-sub">${sub}</div>
+         ${bar > 0 ? `<div class="g-bar"><i style="width:${Math.max(2, Math.min(100, bar)).toFixed(0)}%"></i></div>` : ""}
+       </div>`).join("");
+  }
+
+  function renderOpexFocus(p, d) {
+    const t = opexTotals(p, d);
+    const lo = lineOpex(p).filter((x) => x.prod > 0);
+    const dm = lineDefects(d);
+    const worstSmv = lo.slice().sort((a, b) => b.lostMin - a.lostMin).slice(0, 4);
+    const worstPpm = lo.map((o) => ({ k: o.k, v: o.prod > 0 ? ((dm.get(o.k) || 0) / o.prod) * 1e6 : 0 })).sort((a, b) => b.v - a.v).slice(0, 4);
+    const bestProd = lo.slice().sort((a, b) => b.lost - a.lost).slice(0, 4);
+    const card = (title, color, big, sub, list) =>
+      `<div class="focus-card" style="--fc:${color}">
+         <h4><span class="dot"></span>${title}</h4>
+         <div class="fc-val">${big}</div>
+         <div class="fc-sub">${sub}</div>
+         <ul>${list.length ? list.map(([a, b]) => `<li><span title="${a}">${a}</span><b>${b}</b></li>`).join("") : `<li><span>No data in this selection</span><b>—</b></li>`}</ul>
+       </div>`;
+    $("#opexFocus").innerHTML =
+      card("Reduce line SMV", "#f59e0b", nf(t.gap, 3) + " min/pc",
+        `Recoverable <b>${nf(t.recoverMin)}</b> operator-minutes ≈ <b>${nf(t.lost)}</b> pcs at standard pace.`,
+        worstSmv.map((o) => [o.k, "−" + nf(o.lostMin) + " min"])) +
+      card("Reduce wastage", "#ef4444", nf(t.ppm) + " PPM",
+        `Defect rate <b>${nf(t.wastePct, 2)}%</b> · <b>${nf(t.def)}</b> defective pcs in this selection.`,
+        worstPpm.map((o) => [o.k, nf(o.v) + " PPM"])) +
+      card("Increase production", "#22d3ee", "+" + nf(t.lost) + " pcs",
+        `Achievable <b>${nf(t.achievable)}</b> vs actual <b>${nf(t.prod)}</b> with the same manpower.`,
+        bestProd.map((o) => [o.k, "+" + nf(o.lost) + " pcs"]));
+  }
+
+  function renderOpexCharts(p, d) {
+    const lo = lineOpex(p).filter((x) => x.prod > 0);
+    const dm = lineDefects(d);
+
+    // SMV gap by line (worst first)
+    const g = lo.slice().sort((a, b) => b.gap - a.gap).slice(0, 12);
+    const gmax = Math.max(0.001, ...g.map((x) => Math.max(0, x.gap)));
+    const gd = { labels: g.map((x) => x.k), datasets: [{ label: "SMV gap (min/pc)", data: g.map((x) => +x.gap.toFixed(3)), backgroundColor: g.map((x) => (x.gap > 0 ? lerpColor("#f59e0b", "#ef4444", x.gap / gmax) : "#34d399")), borderRadius: 6, maxBarThickness: 24 }] };
+    const go = baseOpts(); go.indexAxis = "y";
+    if (charts.oC_smvGapLine) { charts.oC_smvGapLine.data = gd; charts.oC_smvGapLine.update(); } else mk("oC_smvGapLine", "bar", gd, go, clickBar("line"));
+
+    // efficiency by line (worst first)
+    const e = lo.slice().sort((a, b) => a.eff - b.eff).slice(0, 12);
+    const ed = { labels: e.map((x) => x.k), datasets: [{ label: "Efficiency %", data: e.map((x) => +x.eff.toFixed(1)), backgroundColor: gradFn("#34d399", "#059669"), borderRadius: 6, maxBarThickness: 26 }] };
+    if (charts.oC_effLine) { charts.oC_effLine.data = ed; charts.oC_effLine.update(); } else mk("oC_effLine", "bar", ed, baseOpts(), clickBar("line"));
+
+    // lost capacity by line
+    const l = lo.filter((x) => x.lost > 0).sort((a, b) => b.lost - a.lost).slice(0, 12);
+    const ld = { labels: l.map((x) => x.k), datasets: [{ label: "Lost pcs", data: l.map((x) => Math.round(x.lost)), backgroundColor: gradFn("#38bdf8", "#6366f1"), borderRadius: 6, maxBarThickness: 26 }] };
+    if (charts.oC_lostLine) { charts.oC_lostLine.data = ld; charts.oC_lostLine.update(); } else mk("oC_lostLine", "bar", ld, baseOpts(), clickBar("line"));
+
+    // defect PPM by line
+    const pm = lo.map((o) => ({ k: o.k, v: o.prod > 0 ? ((dm.get(o.k) || 0) / o.prod) * 1e6 : 0 })).sort((a, b) => b.v - a.v).slice(0, 12);
+    const pmd = { labels: pm.map((x) => x.k), datasets: [{ label: "Defect PPM", data: pm.map((x) => Math.round(x.v)), backgroundColor: gradFn("#ef4444", "#b91c1c"), borderRadius: 6, maxBarThickness: 26 }] };
+    if (charts.oC_ppmLine) { charts.oC_ppmLine.data = pmd; charts.oC_ppmLine.update(); } else mk("oC_ppmLine", "bar", pmd, baseOpts(), clickBar("line"));
+
+    // wastage pareto (bar + cumulative %)
+    const dt = sortByV(groupSum(filteredDef("defectType"), (r) => r.problem, (r) => r.qty)).slice(0, 10);
+    const tot = sum(dt, (x) => x.v);
+    let cum = 0;
+    const cumD = dt.map((x) => { cum += x.v; return tot ? +(cum / tot * 100).toFixed(1) : 0; });
+    const sel = state.cross.dim === "defectType" ? state.cross.value : "";
+    const par = { labels: dt.map((x) => x.k), datasets: [
+      { type: "bar", label: "Defective qty", data: dt.map((x) => x.v), backgroundColor: dt.map((x) => (sel ? (x.k === sel ? "#ef4444" : "rgba(239,68,68,.28)") : lerpColor("#f97316", "#ef4444", x.v / Math.max(1, dt.length ? dt[0].v : 1)))), borderRadius: 6, maxBarThickness: 30, yAxisID: "y", order: 2 },
+      { type: "line", label: "Cumulative %", data: cumD, borderColor: "#22d3ee", backgroundColor: "#22d3ee", tension: .3, pointRadius: 3, borderWidth: 2, yAxisID: "y1", order: 1 } ] };
+    const po = baseOpts();
+    po.scales.y1 = { position: "right", beginAtZero: true, max: 100, ticks: { color: tc().text, font: { size: 10.5 }, callback: (v) => v + "%" }, grid: { drawOnChartArea: false } };
+    if (charts.oC_pareto) { charts.oC_pareto.data = par; charts.oC_pareto.update(); } else mk("oC_pareto", "bar", par, po, clickBar("defectType"));
+
+    // production vs achievable (daily)
+    const m = new Map();
+    p.forEach((r) => { const k = dstr(r.date); if (!m.has(k)) m.set(k, { k, prod: 0, opMin: 0, stdMin: 0 }); const o = m.get(k), std = OBSTD(r); o.prod += r.production; o.opMin += rMin(r); if (std != null) o.stdMin += r.production * std; });
+    const days = [...m.values()].map((o) => { const std = o.prod > 0 ? o.stdMin / o.prod : 0; return { k: o.k, prod: o.prod, ach: std > 0 ? o.opMin / std : o.prod }; }).sort((a, b) => (a.k < b.k ? -1 : 1));
+    const pgd = { labels: days.map((x) => x.k), datasets: [
+      { label: "Actual production", data: days.map((x) => x.prod), borderColor: "#22d3ee", backgroundColor: (c) => grad(c, "rgba(34,211,238,.04)", "rgba(34,211,238,.35)"), fill: true, tension: .35, pointRadius: 0, borderWidth: 2 },
+      { label: "Achievable at standard SMV", data: days.map((x) => Math.round(x.ach)), borderColor: "#34d399", borderDash: [6, 4], backgroundColor: "transparent", fill: false, tension: .35, pointRadius: 0, borderWidth: 2 } ] };
+    if (charts.oC_prodGap) { charts.oC_prodGap.data = pgd; charts.oC_prodGap.update(); } else mk("oC_prodGap", "line", pgd, baseOpts(), clickBar("date"));
+
+    // manpower productivity by line
+    const mpl = lo.slice().sort((a, b) => b.mpp - a.mpp).slice(0, 12);
+    const mpd = { labels: mpl.map((x) => x.k), datasets: [{ label: "pcs / op-hr", data: mpl.map((x) => +x.mpp.toFixed(2)), backgroundColor: gradFn("#a855f7", "#6366f1"), borderRadius: 6, maxBarThickness: 26 }] };
+    if (charts.oC_mpProd) { charts.oC_mpProd.data = mpd; charts.oC_mpProd.update(); } else mk("oC_mpProd", "bar", mpd, baseOpts(), clickBar("line"));
+  }
+
+  function renderOpexTable(p, d) {
+    const lo = lineOpex(p), dm = lineDefects(d);
+    const rows = lo.map((o) => {
+      const def = dm.get(o.k) || 0;
+      return { ...o, def, ppm: o.prod > 0 ? (def / o.prod) * 1e6 : 0, impact: o.lostMin + def * o.std };
+    }).filter((o) => o.prod > 0).sort((a, b) => b.impact - a.impact).slice(0, 15);
+    $("#tblOpex").innerHTML = rows.map((r, i) => {
+      const cls = r.gap <= 0.02 ? "good" : r.gap <= 0.25 ? "warn" : "bad";
+      return `<tr data-line="${String(r.k).replace(/"/g, "&quot;")}">
+        <td><span class="rank">${i + 1}</span></td>
+        <td>${r.k}</td>
+        <td class="num">${nf(r.std, 3)}</td>
+        <td class="num">${nf(r.act, 3)}</td>
+        <td class="num"><span class="tag ${cls}">${r.gap >= 0 ? "+" : ""}${nf(r.gap, 3)}</span></td>
+        <td class="num">${nf(r.eff, 1)}%</td>
+        <td class="num">${nf(r.lost)}</td>
+        <td class="num">${nf(r.ppm)}</td>
+        <td class="num">${nf(r.impact)}</td>
+      </tr>`;
+    }).join("");
+    document.querySelectorAll("#tblOpex tr").forEach((tr) => tr.addEventListener("click", () => toggleCross("line", tr.dataset.line)));
+  }
+
+  function renderOpex(p, d) { renderOpexGoals(p, d); renderOpexFocus(p, d); renderOpexCharts(p, d); renderOpexTable(p, d); }
+
+  function renderTabs() {
+    document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("on", t.dataset.tab === state.tab));
+    const vd = $("#viewDash"), vo = $("#viewOpex");
+    if (vd) vd.hidden = state.tab !== "dash";
+    if (vo) vo.hidden = state.tab !== "opex";
+  }
+
   function render() {
     const p = filteredProd(), d = filteredDef();
-    renderKpis(p, d); renderCharts(p, d); renderSmv(p); renderTable(p, d); renderChips();
+    renderTabs();
+    if (state.tab === "opex") renderOpex(p, d);
+    else { renderKpis(p, d); renderCharts(p, d); renderSmv(p); renderTable(p, d); }
+    renderChips();
   }
 
   /* ---------------- Slicers ---------------- */
@@ -350,6 +523,7 @@
       document.querySelectorAll("#smvSeg button").forEach((x) => x.classList.remove("on"));
       b.classList.add("on"); state.smvDim = b.dataset.dim; render();
     }));
+    document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => { state.tab = t.dataset.tab; render(); }));
   }
   function renderChips() {
     const chips = [], c = state.cross, f = state.filters;

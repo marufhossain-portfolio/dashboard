@@ -47,6 +47,19 @@
     </button>
   </header>
 
+  <!-- ===== Tabs ===== -->
+  <nav class="tabs" id="tabs">
+    <button class="tab on" data-tab="dash">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h4v8H3zm7-6h4v14h-4zm7 3h4v11h-4z"/></svg>
+      Dashboard
+    </button>
+    <button class="tab" data-tab="opex">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 3 7v6c0 5 3.8 9.3 9 10 5.2-.7 9-5 9-10V7l-9-5zm-1 13-3-3 1.4-1.4L11 12.2l4.6-4.6L17 9l-6 6z"/></svg>
+      OPEX Analysis
+      <span class="badge">SMV · WASTE · OUTPUT</span>
+    </button>
+  </nav>
+
   <!-- ===== Slicers ===== -->
   <section class="slicers">
     <div class="slicer"><label>From date</label><input type="date" id="fFrom" /></div>
@@ -59,7 +72,7 @@
   </section>
 
   <!-- ===== Grid ===== -->
-  <main class="grid">
+  <main class="grid" id="viewDash">
     <div class="kpis" id="kpis"></div>
 
     <div class="cards">
@@ -123,6 +136,59 @@
           <table>
             <thead><tr><th>#</th><th>Item</th><th>PG</th><th class="num">Production</th><th class="num">Avg Achv %</th><th class="num">Manpower</th><th class="num">Defects</th></tr></thead>
             <tbody id="tblItems"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ===== OPEX Analysis view ===== -->
+  <main class="grid" id="viewOpex" hidden>
+    <div class="opex-goals" id="opexGoals"></div>
+    <div class="opex-focus" id="opexFocus"></div>
+
+    <div class="cards">
+      <div class="panel span-2">
+        <div class="panel-head"><h3>SMV Gap by Line <span class="unit">min / pc over standard</span></h3><span class="hint">biggest opportunity first · click to filter</span></div>
+        <div class="chart-wrap tall"><canvas id="oC_smvGapLine"></canvas></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Line Efficiency</h3><span class="hint">standard ÷ actual pace</span></div>
+        <div class="chart-wrap"><canvas id="oC_effLine"></canvas></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Lost Capacity by Line <span class="unit">pcs</span></h3><span class="hint">achievable at standard − actual</span></div>
+        <div class="chart-wrap"><canvas id="oC_lostLine"></canvas></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Defect PPM by Line <span class="unit">per million</span></h3><span class="hint">wastage intensity</span></div>
+        <div class="chart-wrap"><canvas id="oC_ppmLine"></canvas></div>
+      </div>
+
+      <div class="panel span-2">
+        <div class="panel-head"><h3>Wastage Pareto <span class="unit">qty + cumulative %</span></h3><span class="hint">top 10 · click to filter</span></div>
+        <div class="chart-wrap tall"><canvas id="oC_pareto"></canvas></div>
+      </div>
+
+      <div class="panel span-2">
+        <div class="panel-head"><h3>Production vs Achievable at Standard SMV</h3><span class="hint">the gap = lost output · click a day</span></div>
+        <div class="chart-wrap"><canvas id="oC_prodGap"></canvas></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Manpower Productivity by Line <span class="unit">pcs / op-hr</span></h3><span class="hint">higher is better</span></div>
+        <div class="chart-wrap"><canvas id="oC_mpProd"></canvas></div>
+      </div>
+
+      <div class="panel span-2">
+        <div class="panel-head"><h3>OPEX Opportunity Ranking</h3><span class="hint">ranked by recoverable operator-minutes · click a row to filter</span></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>#</th><th>Line</th><th class="num">Std SMV</th><th class="num">Act SMV</th><th class="num">Gap</th><th class="num">Eff %</th><th class="num">Lost pcs</th><th class="num">Defect PPM</th><th class="num">Impact</th></tr></thead>
+            <tbody id="tblOpex"></tbody>
           </table>
         </div>
       </div>
