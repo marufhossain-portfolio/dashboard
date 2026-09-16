@@ -1,7 +1,7 @@
 {
-  "name": "ALEL Production Dashboard",
-  "short_name": "ALEL Dashboard",
-  "description": "Live production BI dashboard — OEE, production, productivity and defects, auto-refreshing from the master sheet.",
+  "name": "Production Dashboard — Demo",
+  "short_name": "Dashboard Demo",
+  "description": "Portfolio demo of a live production BI dashboard (OEE, productivity, SMV & OPEX analytics). Synthetic sample data.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

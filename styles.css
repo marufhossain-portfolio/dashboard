@@ -312,3 +312,14 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .ss-empty, .ss-more { padding: 9px 10px; font-size: 12px; color: var(--muted); }
 .ss-more { border-top: 1px solid var(--border); margin-top: 4px; }
 .ss .ss-list::-webkit-scrollbar { width: 8px; }
+
+/* ---------------- Demo badge ---------------- */
+.demo-badge {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 13px; border-radius: 999px; font-size: 10.5px; font-weight: 800; letter-spacing: .08em;
+  background: color-mix(in srgb, var(--c5) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c5) 45%, transparent);
+  color: var(--c5);
+}
+.demo-badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--c5); box-shadow: 0 0 10px var(--c5); }
+@media (max-width: 640px) { .demo-badge { padding: 6px 10px; font-size: 9.5px; } }

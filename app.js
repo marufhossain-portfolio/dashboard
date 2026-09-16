@@ -4,7 +4,8 @@
 (function () {
   "use strict";
 
-  const SHEET_ID = "1HeKJ0XueH0WeAxLrJpNaNz_pvPuxRDElQmHcPd7QfOQ";
+  // Public demo build — no live data source is configured. Everything comes from demo-data.js.
+  const SHEET_ID = "";
   const REFRESH_MS = 30000;
   const PALETTE = ["#22d3ee", "#6366f1", "#a855f7", "#34d399", "#f59e0b", "#ef4444", "#14b8a6", "#eab308", "#f472b6", "#38bdf8", "#fb923c", "#4ade80", "#c084fc", "#2dd4bf", "#facc15", "#f87171"];
   const $ = (s) => document.querySelector(s);
@@ -39,6 +40,8 @@
 
   /* ---------------- Load ---------------- */
   async function fetchSheet(name) {
+    if (window.ALEL_DEMO && window.DEMO_SHEETS && window.DEMO_SHEETS[name]) return window.DEMO_SHEETS[name];
+    if (!SHEET_ID) throw new Error("No data source configured (demo build)");
     const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(name)}&_=${Date.now()}`;
     const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) throw new Error(`${name}: HTTP ${res.status}`);
@@ -55,6 +58,7 @@
   const selects = {};
 
   async function loadObSmv() {
+    if (window.ALEL_DEMO && window.DEMO_OB) { const map = {}; window.DEMO_OB.forEach((o) => { map[o.n] = o.v; }); state.obSmv = map; return; }
     try {
       const r = await fetch("ob-smv.json?" + Date.now());
       const arr = await r.json();

@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ALEL Production Dashboard — Live BI</title>
-  <meta name="description" content="Live Power BI–style production dashboard: OEE, production, productivity and defects — auto-refreshing from the master sheet." />
+  <title>Production Dashboard — Live BI Demo</title>
+  <meta name="description" content="Portfolio demo of a Power BI–style production dashboard: OEE, productivity, SMV analysis and OPEX analytics. All data shown is synthetic sample data." />
   <meta name="theme-color" content="#070b14" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" type="image/png" sizes="48x48" href="icons/favicon-48.png" />
@@ -31,6 +31,8 @@
     </div>
 
     <span class="live-pill" id="livePill"><span class="live-dot"></span><span id="liveText">Connecting…</span></span>
+
+    <span class="demo-badge" title="This public build uses randomly generated sample data only — no company data">SAMPLE DATA</span>
 
     <button class="tbtn install-btn" id="installBtn" title="Install app">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10l3.5-3.5 1.4 1.4L12 16l-4.9-5.1 1.4-1.4L12 13V3zM5 19h14v2H5z"/></svg>
@@ -196,7 +198,7 @@
   </main>
 
   <div class="footer">
-    Live data from Google Sheets · auto-refreshes · <span id="lastUpdated">—</span>
+    Portfolio demo · synthetic sample data · <span id="lastUpdated">—</span>
   </div>
 
   <!-- ===== Loader / toast ===== -->
@@ -204,6 +206,7 @@
   <div class="toast" id="toast"></div>
 
   <script src="vendor/chart.umd.min.js"></script>
+  <script src="demo-data.js"></script>
   <script src="app.js" defer></script>
 </body>
 </html>

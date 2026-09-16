@@ -1,10 +1,11 @@
 /* ALEL Production Dashboard — service worker */
-const CACHE = "alel-dash-v3";
+const CACHE = "alel-dash-demo-v1";
 const SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./demo-data.js",
   "./vendor/chart.umd.min.js",
   "./manifest.webmanifest",
   "./icons/favicon-48.png",
