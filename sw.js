@@ -1,5 +1,5 @@
 /* ALEL Production Dashboard — service worker */
-const CACHE = "alel-dash-v2";
+const CACHE = "alel-dash-v3";
 const SHELL = [
   "./",
   "./index.html",

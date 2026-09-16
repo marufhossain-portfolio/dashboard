@@ -52,6 +52,7 @@
   const state = { prod: [], def: [], obSmv: {}, sig: "", loading: false, firstLoad: true, smvDim: "pg", tab: "dash",
     filters: { from: "", to: "", pg: "", section: "", line: "", item: "" },
     cross: { dim: "", value: "" } };
+  const selects = {};
 
   async function loadObSmv() {
     try {
@@ -507,18 +508,90 @@
     renderChips();
   }
 
-  /* ---------------- Slicers ---------------- */
-  function fillSelect(sel, values) { const el = $(sel); const cur = el.value; el.innerHTML = `<option value="">All</option>` + values.map((v) => `<option value="${String(v).replace(/"/g, "&quot;")}">${v}</option>`).join(""); if (values.includes(cur)) el.value = cur; }
+  /* ---------------- Slicers (searchable) ---------------- */
+  function escHtml(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  function escAttr(s) { return escHtml(s).replace(/"/g, "&quot;"); }
+  function createSearchSelect(host, onChange) {
+    const S = { options: [], value: "" };
+    host.classList.add("ss");
+    host.innerHTML =
+      '<div class="ss-ctl">' +
+        '<input class="ss-inp" type="text" placeholder="All" autocomplete="off" spellcheck="false" />' +
+        '<button class="ss-clr" type="button" aria-label="Clear" hidden>\u00d7</button>' +
+        '<svg class="ss-car" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>' +
+      '</div>' +
+      '<div class="ss-pop" hidden><div class="ss-list"></div></div>';
+    const inp = host.querySelector(".ss-inp"), clr = host.querySelector(".ss-clr"),
+          pop = host.querySelector(".ss-pop"), list = host.querySelector(".ss-list");
+    let cur = -1;
+    function sync() {
+      inp.value = S.value || "";
+      inp.placeholder = S.value ? "" : "All";
+      inp.classList.toggle("has", !!S.value);
+      clr.hidden = !S.value;
+    }
+    function draw() {
+      const q = inp.value.trim();
+      const typed = q && q.toLowerCase() !== (S.value || "").toLowerCase();
+      const items = typed ? S.options.filter((o) => o.toLowerCase().includes(q.toLowerCase())) : S.options;
+      const CAP = 400, capped = items.slice(0, CAP);
+      let html = `<div class="ss-opt${S.value ? "" : " on"}" data-v="">All</div>`;
+      html += capped.map((o) => `<div class="ss-opt${o === S.value ? " on" : ""}" data-v="${escAttr(o)}" title="${escAttr(o)}">${escHtml(o)}</div>`).join("");
+      if (!items.length) html = `<div class="ss-empty">No match for \u201c${escHtml(q)}\u201d</div>`;
+      else if (items.length > CAP) html += `<div class="ss-more">${(items.length - CAP).toLocaleString()} more \u2014 keep typing to narrow</div>`;
+      list.innerHTML = html;
+      cur = -1;
+      if (S.value && !typed) { const on = list.querySelector(".ss-opt.on"); if (on) on.scrollIntoView({ block: "nearest" }); }
+    }
+    function open() { host.classList.add("open"); pop.hidden = false; draw(); }
+    function close() { host.classList.remove("open"); pop.hidden = true; }
+    function pick(v) { S.value = v || ""; sync(); close(); if (onChange) onChange(S.value); }
+    inp.addEventListener("focus", () => { open(); inp.select(); });
+    inp.addEventListener("input", open);
+    inp.addEventListener("keydown", (e) => {
+      const opts = [...list.querySelectorAll(".ss-opt")];
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault(); if (pop.hidden) { open(); return; }
+        cur = e.key === "ArrowDown" ? Math.min(opts.length - 1, cur + 1) : Math.max(0, cur - 1);
+        opts.forEach((o, i) => o.classList.toggle("hl", i === cur));
+        if (opts[cur]) opts[cur].scrollIntoView({ block: "nearest" });
+      } else if (e.key === "Enter") {
+        e.preventDefault(); const el = cur >= 0 ? opts[cur] : list.querySelector(".ss-opt"); if (el) pick(el.getAttribute("data-v"));
+      } else if (e.key === "Escape") { close(); inp.blur(); }
+    });
+    inp.addEventListener("blur", () => setTimeout(() => { sync(); close(); }, 150));
+    clr.addEventListener("mousedown", (e) => { e.preventDefault(); pick(""); });
+    list.addEventListener("mousedown", (e) => { const o = e.target.closest(".ss-opt"); if (o) { e.preventDefault(); pick(o.getAttribute("data-v")); } });
+    document.addEventListener("click", (e) => { if (!host.contains(e.target)) close(); });
+    sync();
+    return {
+      get value() { return S.value; },
+      get options() { return S.options; },
+      setValue(v) { S.value = v || ""; sync(); },
+      setOptions(vals) { S.options = vals.slice(); sync(); },
+    };
+  }
+
   function initSlicers() {
     const JUNK = /^(#n\/a|#ref!|#div\/0!|#value!|#name\?|#null!|n\/a|-|--)$/i;
     const uniq = (f) => [...new Set(state.prod.map(f).map((v) => String(v == null ? "" : v).trim()).filter((v) => v && !JUNK.test(v)))].sort();
-    fillSelect("#fPg", uniq((r) => r.pg)); fillSelect("#fSection", uniq((r) => r.section)); fillSelect("#fLine", uniq((r) => r.line)); fillSelect("#fItem", uniq((r) => r.item));
+    const read = () => {
+      state.filters.from = $("#fFrom").value; state.filters.to = $("#fTo").value;
+      state.filters.pg = selects.fPg.value; state.filters.section = selects.fSection.value;
+      state.filters.line = selects.fLine.value; state.filters.item = selects.fItem.value;
+      render();
+    };
+    selects.fPg = createSearchSelect($("#fPg"), read);
+    selects.fSection = createSearchSelect($("#fSection"), read);
+    selects.fLine = createSearchSelect($("#fLine"), read);
+    selects.fItem = createSearchSelect($("#fItem"), read);
+    selects.fPg.setOptions(uniq((r) => r.pg));
+    selects.fSection.setOptions(uniq((r) => r.section));
+    selects.fLine.setOptions(uniq((r) => r.line));
+    selects.fItem.setOptions(uniq((r) => r.item));
     const dates = state.prod.map((r) => dstr(r.date)).filter(Boolean).sort();
     if (dates.length) { const from = $("#fFrom"), to = $("#fTo"); from.min = to.min = dates[0]; from.max = to.max = dates[dates.length - 1]; from.value = dates[0]; to.value = dates[dates.length - 1]; state.filters.from = dates[0]; state.filters.to = dates[dates.length - 1]; }
-    ["#fFrom", "#fTo", "#fPg", "#fSection", "#fLine", "#fItem"].forEach((id) => $(id).addEventListener("change", () => {
-      state.filters.from = $("#fFrom").value; state.filters.to = $("#fTo").value; state.filters.pg = $("#fPg").value;
-      state.filters.section = $("#fSection").value; state.filters.line = $("#fLine").value; state.filters.item = $("#fItem").value; render();
-    }));
+    ["#fFrom", "#fTo"].forEach((id) => $(id).addEventListener("change", read));
     document.querySelectorAll("#smvSeg button").forEach((b) => b.addEventListener("click", () => {
       document.querySelectorAll("#smvSeg button").forEach((x) => x.classList.remove("on"));
       b.classList.add("on"); state.smvDim = b.dataset.dim; render();
@@ -528,15 +601,15 @@
   function renderChips() {
     const chips = [], c = state.cross, f = state.filters;
     if (c.dim) chips.push({ label: `${c.dim === "defectType" ? "defect" : c.dim}: ${c.value}`, clear: () => (state.cross = { dim: "", value: "" }) });
-    if (f.pg) chips.push({ label: `PG: ${f.pg}`, clear: () => { state.filters.pg = ""; $("#fPg").value = ""; } });
-    if (f.section) chips.push({ label: `Section: ${f.section}`, clear: () => { state.filters.section = ""; $("#fSection").value = ""; } });
-    if (f.line) chips.push({ label: `Line: ${f.line}`, clear: () => { state.filters.line = ""; $("#fLine").value = ""; } });
-    if (f.item) chips.push({ label: `Item: ${f.item}`, clear: () => { state.filters.item = ""; $("#fItem").value = ""; } });
+    if (f.pg) chips.push({ label: `PG: ${f.pg}`, clear: () => { state.filters.pg = ""; selects.fPg.setValue(""); } });
+    if (f.section) chips.push({ label: `Section: ${f.section}`, clear: () => { state.filters.section = ""; selects.fSection.setValue(""); } });
+    if (f.line) chips.push({ label: `Line: ${f.line}`, clear: () => { state.filters.line = ""; selects.fLine.setValue(""); } });
+    if (f.item) chips.push({ label: `Item: ${f.item}`, clear: () => { state.filters.item = ""; selects.fItem.setValue(""); } });
     $("#chips").innerHTML = chips.length
       ? chips.map((ch, i) => `<span class="chip">${ch.label}<button data-i="${i}">✕</button></span>`).join("") + `<button class="clear-btn" id="clearAll">Clear all</button>`
       : `<span style="color:var(--muted);font-size:12px">Click any chart bar / slice / table row to cross-filter — every visual updates together</span>`;
     document.querySelectorAll("#chips .chip button").forEach((b) => b.addEventListener("click", () => { chips[+b.dataset.i].clear(); render(); }));
-    const ca = $("#clearAll"); if (ca) ca.addEventListener("click", () => { state.cross = { dim: "", value: "" }; state.filters = { ...state.filters, pg: "", section: "", line: "", item: "" }; ["#fPg", "#fSection", "#fLine", "#fItem"].forEach((s) => ($(s).value = "")); render(); });
+    const ca = $("#clearAll"); if (ca) ca.addEventListener("click", () => { state.cross = { dim: "", value: "" }; state.filters = { ...state.filters, pg: "", section: "", line: "", item: "" }; ["fPg", "fSection", "fLine", "fItem"].forEach((k) => selects[k].setValue("")); render(); });
   }
 
   /* ---------------- Live / toast / theme ---------------- */
